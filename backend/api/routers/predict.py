@@ -2,19 +2,49 @@ from fastapi import APIRouter, HTTPException
 from datetime import datetime
 import logging
 from ..services.db import get_db, calculate_mape
+from ..services.model_loader import ModelLoader
+from ..services.predictor import Predictor
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/predict", tags=["predict"])
 
-# グローバルな予測サービス（main.pyで初期化）
-predictor = None
+# グローバルキャッシュ（Vercel Serverless Functions用）
+_model_loader = None
+_predictor = None
+
+
+def get_predictor():
+    """
+    予測サービスを取得（遅延初期化）
+    Vercel Serverless Functions用に、初回アクセス時にモデルをロード
+    """
+    global _model_loader, _predictor
+
+    if _predictor is None:
+        try:
+            logger.info("Initializing predictor (lazy loading)...")
+            _model_loader = ModelLoader()
+            # 同期的にモデルをロード
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_model_loader.load_models())
+            loop.close()
+
+            _predictor = Predictor(_model_loader)
+            logger.info("Predictor initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize predictor: {e}")
+            raise
+
+    return _predictor
 
 
 def set_predictor(p):
-    """予測サービスを設定"""
-    global predictor
-    predictor = p
+    """予測サービスを設定（後方互換性のため残す）"""
+    global _predictor
+    _predictor = p
 
 
 @router.get("/latest")
@@ -29,10 +59,10 @@ async def get_latest_prediction(area: str = "tokyo", hours: int = 48):
     Returns:
         予測結果
     """
-    if predictor is None:
-        raise HTTPException(status_code=503, detail="予測サービスが初期化されていません")
-
     try:
+        # 予測サービスを取得（初回時にロード）
+        predictor = get_predictor()
+
         logger.info(f"Generating {hours}h prediction for {area}")
 
         # 予測実行

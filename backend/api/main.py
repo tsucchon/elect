@@ -1,10 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from mangum import Mangum
 import logging
 from .services.db import init_database
-from .services.model_loader import ModelLoader
-from .services.predictor import Predictor
 from .routers import data, predict
 
 # ロガー設定
@@ -25,23 +22,18 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """起動時初期化"""
+    """起動時初期化（Vercel Serverless Functions用に最小化）"""
     try:
-        # データベース初期化
+        # データベース初期化のみ実行
         init_database()
+        logger.info("Database initialized")
 
-        # モデルロード
-        model_loader = ModelLoader()
-        await model_loader.load_models()
+        # モデルロードは遅延初期化（predict.get_predictor()で実行）
+        logger.info("ML models will be loaded on first prediction request (lazy loading)")
 
-        # 予測サービス初期化
-        predictor = Predictor(model_loader)
-        predict.set_predictor(predictor)
-
-        logger.info("Application started successfully")
     except Exception as e:
         logger.error(f"Startup failed: {e}")
-        logger.warning("Continuing without ML models. Run ml/scripts/train.py to generate models.")
+        logger.warning("Continuing with limited functionality")
 
 
 # ルーター登録
@@ -60,6 +52,4 @@ async def health_check():
     """ヘルスチェック"""
     return {"status": "ok", "message": "API is running"}
 
-
-# Vercel用ハンドラー
-handler = Mangum(app)
+# Vercel Python Functionsは、appオブジェクトを自動的に認識します
