@@ -1,12 +1,16 @@
-import sys
-import os
-
-# バックエンドモジュールのパスを追加
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from backend.api.main import app
+from fastapi import FastAPI
 from mangum import Mangum
 
+# 最小限のFastAPIアプリを作成
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    return {"message": "API is working"}
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok", "message": "API is running"}
+
 # Vercel Serverless Functionのエントリーポイント
-# MangumでFastAPIアプリをラップ（lifespanイベントは無効化）
 handler = Mangum(app, lifespan="off")
