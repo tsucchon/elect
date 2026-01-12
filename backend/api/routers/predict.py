@@ -26,11 +26,7 @@ def get_predictor():
             logger.info("Initializing predictor (lazy loading)...")
             _model_loader = ModelLoader()
             # 同期的にモデルをロード
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(_model_loader.load_models())
-            loop.close()
+            _model_loader.load_models()
 
             _predictor = Predictor(_model_loader)
             logger.info("Predictor initialized successfully")

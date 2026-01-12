@@ -12,8 +12,8 @@ class ModelLoader:
         self.models = {}
         self.model_dir = Path(__file__).parent.parent.parent.parent / "ml" / "models"
 
-    async def load_models(self):
-        """学習済みモデルをロード"""
+    def load_models(self):
+        """学習済みモデルをロード（同期関数）"""
         try:
             # 発電量予測モデル
             gen_model_path = self.model_dir / "generation_tokyo.pkl"
