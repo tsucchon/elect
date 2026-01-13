@@ -47,12 +47,23 @@ def clear_generation_data(conn, area: str = "tokyo"):
 
 
 def save_generation_data(conn, df, area: str = "tokyo"):
-    """発電量データをDBに保存"""
+    """発電量データをDBに保存（東京電力形式対応）"""
     cursor = conn.cursor()
 
     for _, row in df.iterrows():
         # pandasのTimestamp型を文字列に変換
         timestamp_str = row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+
+        # 東京電力形式の場合
+        if '太陽光発電実績' in row:
+            pv_mw = row.get('太陽光発電実績', 0)
+            wind_mw = row.get('風力発電実績', 0)
+            total_mw = pv_mw + wind_mw
+        else:
+            # 旧形式の場合
+            pv_mw = row.get('pv_mw', 0)
+            wind_mw = row.get('wind_mw', 0)
+            total_mw = row.get('total_mw', row.get('renewable_total_mw', pv_mw + wind_mw))
 
         cursor.execute("""
             INSERT INTO generation_actual (area, timestamp, pv_mw, wind_mw, total_mw)
@@ -60,9 +71,9 @@ def save_generation_data(conn, df, area: str = "tokyo"):
         """, (
             area,
             timestamp_str,
-            row.get('pv_mw', 0),
-            row.get('wind_mw', 0),
-            row.get('total_mw', 0)
+            pv_mw,
+            wind_mw,
+            total_mw
         ))
 
     conn.commit()
@@ -102,7 +113,10 @@ def get_generation_data(conn, area: str = "tokyo", limit: int = 1000):
     """発電量データを取得"""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT area, timestamp, pv_mw, wind_mw, total_mw
+        SELECT area, timestamp, pv_mw, wind_mw, total_mw,
+               pv_mw as '太陽光発電実績',
+               wind_mw as '風力発電実績',
+               total_mw as renewable_total_mw
         FROM generation_actual
         WHERE area = ?
         ORDER BY timestamp DESC

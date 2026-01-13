@@ -49,20 +49,52 @@ async def upload_csv(
         if generation_file:
             # CSVファイルを読み込み
             content = await generation_file.read()
-            df = pd.read_csv(io.BytesIO(content))
 
-            # データ検証
-            required_columns = ['timestamp']
-            for col in required_columns:
-                if col not in df.columns:
-                    raise ValueError(f"Required column '{col}' not found in generation file")
+            # まず最初の行を確認してTEPCO形式かどうか判定
+            first_line = content.decode('utf-8').split('\n')[0]
+            is_tepco_format = '単位[MW平均]' in first_line or 'DATE' in first_line
 
-            # timestampを日時型に変換
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            if is_tepco_format and '単位[MW平均]' in first_line:
+                # TEPCO形式で1行目がヘッダー行の場合、スキップして読み込み
+                df = pd.read_csv(io.BytesIO(content), skiprows=1)
+                logger.info(f"Detected TEPCO format CSV with header row (skiprows=1)")
+            elif is_tepco_format:
+                # TEPCO形式だがヘッダー行がない場合
+                df = pd.read_csv(io.BytesIO(content))
+                logger.info(f"Detected TEPCO format CSV without header row")
+            else:
+                # 旧形式
+                df = pd.read_csv(io.BytesIO(content))
+                logger.info(f"Detected old format CSV")
 
-            # 必要なカラムがない場合はデフォルト値を設定
-            if 'total_mw' not in df.columns:
-                df['total_mw'] = df.get('pv_mw', 0) + df.get('wind_mw', 0)
+            # TEPCO形式かどうかを再判定
+            is_tepco_format = 'DATE' in df.columns and 'TIME' in df.columns
+
+            if is_tepco_format:
+
+                # timestampを作成
+                df['timestamp'] = pd.to_datetime(df['DATE'] + ' ' + df['TIME'], format='%Y/%m/%d %H:%M')
+
+                # 再エネ合計を計算
+                df['total_mw'] = df['太陽光発電実績'].astype(float) + df['風力発電実績'].astype(float)
+                df['pv_mw'] = df['太陽光発電実績'].astype(float)
+                df['wind_mw'] = df['風力発電実績'].astype(float)
+
+                logger.info(f"Detected TEPCO format CSV")
+            else:
+                # 旧形式の場合
+                # データ検証
+                required_columns = ['timestamp']
+                for col in required_columns:
+                    if col not in df.columns:
+                        raise ValueError(f"Required column '{col}' not found in generation file")
+
+                # timestampを日時型に変換
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+                # 必要なカラムがない場合はデフォルト値を設定
+                if 'total_mw' not in df.columns:
+                    df['total_mw'] = df.get('pv_mw', 0) + df.get('wind_mw', 0)
 
             # DBに保存
             save_generation_data(db, df, area="tokyo")

@@ -87,7 +87,7 @@ class WeatherService:
         df = df.set_index('timestamp')
 
         # 30分間隔にリサンプリング（線形補間）
-        df_resampled = df.resample('30T').interpolate(method='linear')
+        df_resampled = df.resample('30min').interpolate(method='linear')
 
         # インデックスをリセット
         df_resampled = df_resampled.reset_index()

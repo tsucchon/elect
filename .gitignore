@@ -57,6 +57,19 @@ ml/models/*.joblib
 # Demo CSV files
 *_demo*.csv
 
+# Backup files
+*.bak
+
+# Test files
+backend/test_*.py
+check_*.sh
+
+# Downloaded data (large files)
+ml/data/seed/jepx_spot_*.csv
+
+# Playwright temp
+.playwright-mcp/
+
 # Environment
 .env
 .env.local

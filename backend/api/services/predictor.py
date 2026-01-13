@@ -59,7 +59,7 @@ class Predictor:
             raise
 
     async def _predict_generation(self, weather_df: pd.DataFrame, historical_data: list):
-        """発電量を予測"""
+        """発電量を予測（再エネ合計）"""
         if not self.model_loader.is_loaded("generation"):
             raise ValueError("Generation model not loaded")
 
@@ -67,8 +67,8 @@ class Predictor:
         model = model_data['model']
         feature_cols = model_data['feature_cols']
 
-        # 特徴量生成
-        features = self._create_features(weather_df, historical_data, 'total_mw')
+        # 特徴量生成（renewable_total_mwを予測）
+        features = self._create_features(weather_df, historical_data, 'renewable_total_mw')
 
         # 予測実行
         predictions = model.predict(features[feature_cols], num_iteration=model.best_iteration)
@@ -150,8 +150,9 @@ class Predictor:
         # Lag特徴量（過去データから計算）
         if historical_data:
             # 最新の値を使用
-            if target_col == 'total_mw':
-                recent_values = [row['total_mw'] for row in historical_data[:100]]
+            if target_col == 'renewable_total_mw':
+                # renewable_total_mwカラムを使用（DBのエイリアス）
+                recent_values = [row['renewable_total_mw'] for row in historical_data[:100]]
             else:
                 recent_values = [row['price_yen'] for row in historical_data[:100]]
 

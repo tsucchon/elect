@@ -13,6 +13,28 @@ from datetime import datetime
 import json
 
 
+def load_tepco_csv(file_path: Path) -> pd.DataFrame:
+    """
+    東京電力形式のCSVを読み込む
+
+    Args:
+        file_path: CSVファイルのパス
+
+    Returns:
+        読み込んだDataFrame
+    """
+    # ヘッダー行（単位[MW平均],,,供給力）をスキップして読み込み
+    df = pd.read_csv(file_path, skiprows=1)
+
+    # DATEとTIMEを結合してtimestampを作成
+    df['timestamp'] = pd.to_datetime(df['DATE'] + ' ' + df['TIME'], format='%Y/%m/%d %H:%M')
+
+    # 再エネ合計を計算
+    df['renewable_total_mw'] = df['太陽光発電実績'] + df['風力発電実績']
+
+    return df
+
+
 def create_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     特徴量を生成
@@ -25,8 +47,9 @@ def create_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     df = df.copy()
 
-    # timestampを日時型に変換
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    # timestampが文字列の場合のみ変換
+    if df['timestamp'].dtype == 'object':
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
 
     # 時刻特徴（周期性を考慮）
     df['hour'] = df['timestamp'].dt.hour
@@ -74,20 +97,23 @@ def create_lag_features(df: pd.DataFrame, target_col: str, lags: list = [1, 2, 4
 
 
 def train_generation_model():
-    """発電量予測モデルを学習"""
+    """発電量予測モデルを学習（再エネ発電量）"""
     print("=" * 60)
-    print("Training Generation Model")
+    print("Training Generation Model (Renewable Energy)")
     print("=" * 60)
 
-    # データロード
+    # データロード（東京電力形式）
     data_dir = Path(__file__).parent.parent / 'data' / 'seed'
-    df = pd.read_csv(data_dir / 'generation_tokyo_sample.csv')
+    df = load_tepco_csv(data_dir / 'generation_tokyo_tepco.csv')
 
     print(f"Loaded {len(df)} records")
+    print(f"Solar range: {df['太陽光発電実績'].min():.0f} - {df['太陽光発電実績'].max():.0f} MW")
+    print(f"Wind range: {df['風力発電実績'].min():.0f} - {df['風力発電実績'].max():.0f} MW")
+    print(f"Renewable total range: {df['renewable_total_mw'].min():.0f} - {df['renewable_total_mw'].max():.0f} MW")
 
     # 特徴量生成
     df = create_features(df)
-    df = create_lag_features(df, 'total_mw')
+    df = create_lag_features(df, 'renewable_total_mw')
 
     # 欠損値削除
     df = df.dropna()
@@ -98,13 +124,14 @@ def train_generation_model():
         'hour_sin', 'hour_cos',
         'day_of_week', 'is_weekend',
         'month_sin', 'month_cos',
-        'total_mw_lag_1', 'total_mw_lag_2', 'total_mw_lag_48', 'total_mw_lag_96',
-        'total_mw_rolling_mean_24', 'total_mw_rolling_std_24',
-        'total_mw_rolling_mean_48', 'total_mw_rolling_std_48'
+        'renewable_total_mw_lag_1', 'renewable_total_mw_lag_2',
+        'renewable_total_mw_lag_48', 'renewable_total_mw_lag_96',
+        'renewable_total_mw_rolling_mean_24', 'renewable_total_mw_rolling_std_24',
+        'renewable_total_mw_rolling_mean_48', 'renewable_total_mw_rolling_std_48'
     ]
 
     X = df[feature_cols]
-    y = df['total_mw']
+    y = df['renewable_total_mw']
 
     # 学習データとテストデータに分割（時系列なので単純分割）
     split_idx = int(len(X) * 0.8)

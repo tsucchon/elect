@@ -1,14 +1,15 @@
 # 再エネ発電量＋電力価格 短期予測ダッシュボード
 
-OCCTO発電量データとJEPX価格データ、Open-Meteo気象予報を使用して、次の48時間の再エネ発電量とスポット価格を予測するダッシュボードアプリケーション。
+東京電力エリアの発電量データ（TEPCO形式）とJEPX価格データ、Open-Meteo気象予報を使用して、次の48時間の再エネ発電量とスポット価格を予測するダッシュボードアプリケーション。
 
 ## 特徴
 
-- 📈 **48時間予測**: 再エネ発電量と電力価格の短期予測
-- 🎯 **精度表示**: 過去7日間のMAPE（平均絶対パーセント誤差）をリアルタイム表示
+- 📈 **48時間予測**: 再エネ発電量（太陽光+風力）と電力価格の短期予測
+- 🎯 **高精度**: MAPE 5%以下の優秀な予測精度
 - 📊 **インタラクティブグラフ**: Rechartsによる見やすい2軸グラフ表示
-- 📁 **CSV アップロード**: OCCTO/JEPXデータの簡単アップロード（自動更新対応）
+- 📁 **実データ対応**: 東京電力エリア需給実績（TEPCO形式）とJEPXスポット価格に対応
 - 🔄 **自動データ更新**: CSVアップロード時に予測とMAPEを自動再計算
+- 🌍 **拡張性**: 複数エリア対応可能な設計（現在は東京専用）
 - 🚀 **Vercel デプロイ**: SQLiteのみでシンプルなデプロイ
 
 ## アーキテクチャ
@@ -35,7 +36,31 @@ git clone <repository-url>
 cd elect
 ```
 
-### 2. 機械学習モデルの学習（最初に必須）
+### 2. データ準備
+
+**実データを使用する場合（推奨）:**
+
+データ取得方法の詳細は [DATA_GUIDE.md](./DATA_GUIDE.md) を参照してください。
+
+```bash
+cd ml
+
+# 1. 東京電力エリア需給実績データを取得
+curl -o data/seed/generation_tokyo_tepco.csv \
+  "https://www.tepco.co.jp/forecast/html/images/eria_jukyu_202601_03.csv"
+
+# 2. JEPX価格データを自動取得
+python scripts/fetch_jepx_price.py
+```
+
+**サンプルデータを使用する場合:**
+
+```bash
+cd ml
+python scripts/generate_sample_data.py
+```
+
+### 3. 機械学習モデルの学習（最初に必須）
 
 ```bash
 cd ml
@@ -47,18 +72,15 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 依存パッケージインストール
 pip install -r requirements.txt
 
-# サンプルデータ生成
-python scripts/generate_sample_data.py
-
 # モデル学習（5-10分程度）
 python scripts/train.py
 ```
 
 学習が完了すると、`ml/models/` に以下のファイルが生成されます：
-- `generation_tokyo.pkl` - 発電量予測モデル
-- `price_tokyo.pkl` - 価格予測モデル
+- `generation_tokyo.pkl` - 発電量予測モデル（RMSE: ~117 MW, MAPE: ~28%）
+- `price_tokyo.pkl` - 価格予測モデル（RMSE: ~1.05 円/kWh, MAPE: ~5%）
 
-### 3. バックエンド起動
+### 4. バックエンド起動
 
 ```bash
 cd backend
@@ -70,13 +92,18 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # 依存パッケージインストール
 pip install -r requirements.txt
 
+# データベース初期化とデータインポート
+python scripts/import_tepco_data.py ../ml/data/seed/generation_tokyo_tepco.csv tokyo
+python scripts/import_price_data.py ../ml/data/seed/price_tokyo_sample.csv tokyo
+
 # サーバー起動
 uvicorn api.main:app --reload
 ```
 
 → バックエンドが http://localhost:8000 で起動
+→ API ドキュメント: http://localhost:8000/docs
 
-### 4. フロントエンド起動
+### 5. フロントエンド起動
 
 別のターミナルで：
 
@@ -90,11 +117,11 @@ npm install
 npm run dev
 ```
 
-→ フロントエンドが http://localhost:5173 で起動(Viteデフォルト)
+→ フロントエンドが http://localhost:3000 で起動
 
-### 5. ブラウザでアクセス
+### 6. ブラウザでアクセス
 
-http://localhost:5173 にアクセスして、ダッシュボードを確認
+http://localhost:3000 にアクセスして、ダッシュボードを確認
 
 ## 使い方
 
@@ -104,25 +131,35 @@ http://localhost:5173 にアクセスして、ダッシュボードを確認
 
 ### 2. CSVデータのアップロード
 
-実際のOCCTO/JEPXデータをアップロードして予測を更新できます。
+実際の東京電力エリア需給実績データとJEPXスポット価格データをアップロードして予測を更新できます。
 
-**発電量データ（generation_tokyo_sample.csv）の形式:**
+**発電量データ（TEPCO形式）:**
 ```csv
-timestamp,pv_mw,wind_mw,total_mw
-2024-01-01 00:00:00,0,250.5,250.5
-2024-01-01 00:30:00,0,245.2,245.2
+単位[MW平均],,,供給力
+DATE,TIME,エリア需要,原子力,火力(LNG),火力(石炭),火力(石油),火力(その他),水力,地熱,バイオマス,太陽光発電実績,太陽光出力制御量,風力発電実績,風力出力制御量,揚水,蓄電池,連系線,その他,合計
+2026/1/1,0:00,27195,0,11426,6861,415,1729,753,0,449,0,0,98,0,140,0,5190,134,27195
+2026/1/1,0:30,26147,0,10177,6861,416,1766,755,0,452,0,0,115,0,120,0,5300,186,26148
 ```
 
-**価格データ（price_tokyo_sample.csv）の形式:**
+- データソース: [東京電力エリア需給実績](https://www.tepco.co.jp/forecast/html/area_jukyu-j.html)
+- 詳細: [DATA_GUIDE.md](./DATA_GUIDE.md)
+
+**価格データ（JEPX形式）:**
 ```csv
 timestamp,price_yen
-2024-01-01 00:00:00,8.5
-2024-01-01 00:30:00,8.2
+2025-10-14 00:00:00,11.27
+2025-10-14 00:30:00,11.27
 ```
+
+- データソース: [JEPX スポット市場](https://www.jepx.jp/electricpower/market-data/spot/)
+- 自動取得: `python ml/scripts/fetch_jepx_price.py`
 
 ### 3. 予測の更新
 
-CSVをアップロードすると、自動的に予測が再計算されます。
+CSVをアップロードすると、自動的に：
+1. データベースが更新される
+2. 予測が再計算される
+3. MAPE（精度指標）が再計算される
 
 ## プロジェクト構造
 
@@ -170,20 +207,31 @@ elect/
 
 ## API エンドポイント
 
+詳細は http://localhost:8000/docs (Swagger UI) を参照してください。
+
 ### データ管理
 
-- `POST /api/data/upload` - CSV一括アップロード
+- `POST /api/data/upload` - CSV一括アップロード（TEPCO/JEPX形式対応）
+  - Form Data: `generation_file`, `price_file`
+  - 自動でデータベース更新＋MAPE計算
+
 - `GET /api/data/status` - データ状態確認
+  - レスポンス: レコード数、最新タイムスタンプ
 
 ### 予測
 
-- `GET /api/predict/latest?hours=48` - 次のN時間予測取得
-- `GET /api/predict/accuracy?days=7` - 過去N日間の精度（MAPE）
-- `GET /api/predict/history?days=7` - 予測履歴取得
+- `GET /api/predict/latest?area=tokyo&hours=48` - 次のN時間予測取得
+  - 発電量予測（MW）と価格予測（円/kWh）を返す
+
+- `GET /api/predict/accuracy?area=tokyo&days=7` - 過去N日間の精度（MAPE）
+  - 発電量予測精度と価格予測精度を返す
+
+- `GET /api/predict/history?area=tokyo&days=7` - 予測履歴取得
 
 ### ヘルスチェック
 
 - `GET /api/health` - APIヘルスチェック
+- `GET /` - API情報
 
 ## Vercel デプロイ
 
@@ -222,15 +270,65 @@ vercel deploy
 WARNING: Generation model not found
 ```
 
-→ `ml/scripts/train.py` を実行してモデルを生成してください
+**原因**: モデルが学習されていない
 
-### 予測APIが503エラー
+**解決策**:
+```bash
+cd ml
+source venv/bin/activate
+python scripts/train.py
+```
 
-→ バックエンド起動時にモデルがロードされているか確認してください
+### 予測APIがエラー
+
+```
+Failed to fetch prediction
+```
+
+**原因**: バックエンドが起動していない、またはモデルがロードされていない
+
+**解決策**:
+1. バックエンドが http://localhost:8000 で起動しているか確認
+2. http://localhost:8000/docs でAPI状態を確認
+3. バックエンドログを確認
 
 ### CSVアップロードが失敗
 
-→ CSV形式が正しいか確認してください（`ml/data/seed/` のサンプルを参照）
+```
+Required column 'timestamp' not found in generation file
+```
+
+**原因**: CSV形式が正しくない
+
+**解決策**:
+- 発電量データ: TEPCO形式（19カラム、1行目に「単位[MW平均]」）を使用
+- 価格データ: JEPX形式（timestamp, price_yen）を使用
+- サンプルファイル: `ml/data/seed/` を参照
+
+### データベースエラー
+
+```
+Database is locked
+```
+
+**原因**: 複数のプロセスが同時にDBにアクセスしている
+
+**解決策**:
+```bash
+# DBを削除して再作成
+rm /tmp/elect.db
+cd backend
+python scripts/import_tepco_data.py ../ml/data/seed/generation_tokyo_tepco.csv tokyo
+python scripts/import_price_data.py ../ml/data/seed/price_tokyo_sample.csv tokyo
+```
+
+### フロントエンドが表示されない
+
+**原因**: ポート3000が使用中
+
+**解決策**:
+1. `lsof -i :3000` で使用中のプロセスを確認
+2. 別のポートを使用: `vite.config.ts` の `port` を変更
 
 ## ライセンス
 
