@@ -67,11 +67,8 @@ class Predictor:
         ort_session = model_data['model']
         feature_cols = model_data['feature_cols']
 
-        # 特徴量生成（renewable_total_mwを予測）
-        features = self._create_features(weather_df, historical_data, 'renewable_total_mw')
-
-        # 特徴量の列名をメタデータと一致させる（total_mw_* に変換）
-        features = self._rename_features_for_onnx(features, 'renewable_total_mw', 'total_mw')
+        # 特徴量生成（学習時と同じ列名 'total_mw' を使用）
+        features = self._create_features(weather_df, historical_data, 'total_mw')
 
         # 予測実行（ONNX）
         input_name = ort_session.get_inputs()[0].name
@@ -100,11 +97,8 @@ class Predictor:
         ort_session = model_data['model']
         feature_cols = model_data['feature_cols']
 
-        # 特徴量生成
+        # 特徴量生成（学習時と同じ列名 'price_yen' を使用）
         features = self._create_features(weather_df, historical_data, 'price_yen')
-
-        # 特徴量の列名をメタデータと一致させる（price_* に変換）
-        features = self._rename_features_for_onnx(features, 'price_yen', 'price')
 
         # 予測実行（ONNX）
         input_name = ort_session.get_inputs()[0].name
@@ -186,10 +180,11 @@ class Predictor:
         # Lag特徴量（過去データから計算）
         if historical_data:
             # 最新の値を使用
-            if target_col == 'renewable_total_mw':
+            if target_col == 'renewable_total_mw' or target_col == 'total_mw':
                 # renewable_total_mwカラムを使用（DBのエイリアス）
                 recent_values = [row['renewable_total_mw'] for row in historical_data[:100]]
             else:
+                # price_yenカラムを使用
                 recent_values = [row['price_yen'] for row in historical_data[:100]]
 
             # Lag特徴量を計算
