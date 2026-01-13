@@ -77,6 +77,9 @@ class Predictor:
         input_name = ort_session.get_inputs()[0].name
         predictions = ort_session.run(None, {input_name: features[feature_cols].astype('float32').values})[0]
 
+        # ONNX出力を1次元配列に変換
+        predictions = predictions.flatten()
+
         # 結果をフォーマット
         timestamps = [
             (datetime.now() + timedelta(minutes=30 * i)).isoformat()
@@ -106,6 +109,9 @@ class Predictor:
         # 予測実行（ONNX）
         input_name = ort_session.get_inputs()[0].name
         predictions = ort_session.run(None, {input_name: features[feature_cols].astype('float32').values})[0]
+
+        # ONNX出力を1次元配列に変換
+        predictions = predictions.flatten()
 
         # 結果をフォーマット
         timestamps = [
