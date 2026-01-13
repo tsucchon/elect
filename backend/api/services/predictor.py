@@ -64,14 +64,18 @@ class Predictor:
             raise ValueError("Generation model not loaded")
 
         model_data = self.model_loader.get_model("generation")
-        model = model_data['model']
+        ort_session = model_data['model']
         feature_cols = model_data['feature_cols']
 
         # 特徴量生成（renewable_total_mwを予測）
         features = self._create_features(weather_df, historical_data, 'renewable_total_mw')
 
-        # 予測実行
-        predictions = model.predict(features[feature_cols], num_iteration=model.best_iteration)
+        # 特徴量の列名をメタデータと一致させる（total_mw_* に変換）
+        features = self._rename_features_for_onnx(features, 'renewable_total_mw', 'total_mw')
+
+        # 予測実行（ONNX）
+        input_name = ort_session.get_inputs()[0].name
+        predictions = ort_session.run(None, {input_name: features[feature_cols].astype('float32').values})[0]
 
         # 結果をフォーマット
         timestamps = [
@@ -90,14 +94,18 @@ class Predictor:
             raise ValueError("Price model not loaded")
 
         model_data = self.model_loader.get_model("price")
-        model = model_data['model']
+        ort_session = model_data['model']
         feature_cols = model_data['feature_cols']
 
         # 特徴量生成
         features = self._create_features(weather_df, historical_data, 'price_yen')
 
-        # 予測実行
-        predictions = model.predict(features[feature_cols], num_iteration=model.best_iteration)
+        # 特徴量の列名をメタデータと一致させる（price_* に変換）
+        features = self._rename_features_for_onnx(features, 'price_yen', 'price')
+
+        # 予測実行（ONNX）
+        input_name = ort_session.get_inputs()[0].name
+        predictions = ort_session.run(None, {input_name: features[feature_cols].astype('float32').values})[0]
 
         # 結果をフォーマット
         timestamps = [
@@ -109,6 +117,28 @@ class Predictor:
             {"timestamp": ts, "value": max(0, float(val))}
             for ts, val in zip(timestamps, predictions)
         ]
+
+    def _rename_features_for_onnx(self, features: pd.DataFrame, old_prefix: str, new_prefix: str) -> pd.DataFrame:
+        """
+        ONNX モデル用に特徴量の列名を変換
+
+        Args:
+            features: 特徴量DataFrame
+            old_prefix: 現在の列名プレフィックス（例: 'renewable_total_mw', 'price_yen'）
+            new_prefix: ONNXモデルが期待する列名プレフィックス（例: 'total_mw', 'price'）
+
+        Returns:
+            列名を変換したDataFrame
+        """
+        rename_dict = {}
+        for col in features.columns:
+            if old_prefix in col:
+                # renewable_total_mw_lag_1 -> total_mw_lag_1
+                # price_yen_lag_1 -> price_lag_1
+                new_col = col.replace(old_prefix, new_prefix)
+                rename_dict[col] = new_col
+
+        return features.rename(columns=rename_dict)
 
     def _create_features(self, weather_df: pd.DataFrame, historical_data: list, target_col: str) -> pd.DataFrame:
         """

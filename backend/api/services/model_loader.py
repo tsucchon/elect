@@ -1,4 +1,5 @@
 import joblib
+import onnxruntime as ort
 from pathlib import Path
 import logging
 
@@ -15,23 +16,41 @@ class ModelLoader:
     def load_models(self):
         """学習済みモデルをロード（同期関数）"""
         try:
-            # 発電量予測モデル
-            gen_model_path = self.model_dir / "generation_tokyo.pkl"
-            if gen_model_path.exists():
-                model_data = joblib.load(gen_model_path)
-                self.models["generation"] = model_data
-                logger.info(f"Loaded generation model (MAPE: {model_data['metrics']['mape']:.2f}%)")
-            else:
-                logger.warning(f"Generation model not found at {gen_model_path}")
+            # 発電量予測モデル（ONNX形式）
+            gen_model_path = self.model_dir / "generation_tokyo.onnx"
+            gen_metadata_path = self.model_dir / "generation_tokyo.metadata.pkl"
 
-            # 価格予測モデル
-            price_model_path = self.model_dir / "price_tokyo.pkl"
-            if price_model_path.exists():
-                model_data = joblib.load(price_model_path)
-                self.models["price"] = model_data
-                logger.info(f"Loaded price model (MAPE: {model_data['metrics']['mape']:.2f}%)")
+            if gen_model_path.exists() and gen_metadata_path.exists():
+                # ONNXモデルをロード
+                ort_session = ort.InferenceSession(str(gen_model_path))
+                metadata = joblib.load(gen_metadata_path)
+
+                self.models["generation"] = {
+                    "model": ort_session,
+                    "feature_cols": metadata["feature_cols"],
+                    "metrics": metadata["metrics"]
+                }
+                logger.info(f"Loaded generation ONNX model (MAPE: {metadata['metrics']['mape']:.2f}%)")
             else:
-                logger.warning(f"Price model not found at {price_model_path}")
+                logger.warning(f"Generation ONNX model not found at {gen_model_path}")
+
+            # 価格予測モデル（ONNX形式）
+            price_model_path = self.model_dir / "price_tokyo.onnx"
+            price_metadata_path = self.model_dir / "price_tokyo.metadata.pkl"
+
+            if price_model_path.exists() and price_metadata_path.exists():
+                # ONNXモデルをロード
+                ort_session = ort.InferenceSession(str(price_model_path))
+                metadata = joblib.load(price_metadata_path)
+
+                self.models["price"] = {
+                    "model": ort_session,
+                    "feature_cols": metadata["feature_cols"],
+                    "metrics": metadata["metrics"]
+                }
+                logger.info(f"Loaded price ONNX model (MAPE: {metadata['metrics']['mape']:.2f}%)")
+            else:
+                logger.warning(f"Price ONNX model not found at {price_model_path}")
 
             if not self.models:
                 logger.error("No models loaded. Please run ml/scripts/train.py first.")
