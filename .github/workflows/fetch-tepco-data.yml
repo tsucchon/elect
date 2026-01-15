@@ -3,7 +3,6 @@ name: Fetch TEPCO Generation Data
 on:
   schedule:
     - cron: '40 * * * *'  # 毎時40分
-    - cron: '50 * * * *'  # 毎時50分（10分後の再取得）
   workflow_dispatch:
     inputs:
       year_month:
