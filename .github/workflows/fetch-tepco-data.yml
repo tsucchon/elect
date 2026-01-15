@@ -1,0 +1,77 @@
+name: Fetch TEPCO Generation Data
+
+on:
+  schedule:
+    - cron: '40 21 * * *'  # JST 06:40
+    - cron: '40 3 * * *'   # JST 12:40
+    - cron: '40 9 * * *'   # JST 18:40
+    - cron: '50 1 * * *'   # JST 10:50（4時間10分後）
+    - cron: '50 7 * * *'   # JST 16:50（4時間10分後）
+    - cron: '50 13 * * *'  # JST 22:50（4時間10分後）
+  workflow_dispatch:
+    inputs:
+      year_month:
+        description: 'Year-Month (YYYYMM format, e.g., 202601)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  fetch-tepco:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd ml
+          pip install -r requirements.txt
+
+      - name: Fetch TEPCO data
+        id: fetch
+        run: |
+          cd ml
+          python scripts/fetch_tepco_data.py
+        env:
+          TZ: 'Asia/Tokyo'
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          if [[ -n $(git status --porcelain ml/data/seed/generation_tokyo_tepco.csv) ]]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Data changed, preparing commit"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No data changes detected"
+          fi
+
+      - name: Commit and push if changed
+        if: steps.git-check.outputs.changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add ml/data/seed/generation_tokyo_tepco.csv
+          git commit -m "chore: Update TEPCO generation data ($(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST'))"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::TEPCO data fetch failed. Check logs for details."

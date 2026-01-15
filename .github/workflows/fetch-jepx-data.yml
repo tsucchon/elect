@@ -1,0 +1,73 @@
+name: Fetch JEPX Price Data
+
+on:
+  schedule:
+    - cron: '20 6 * * *'  # JST 15:20（毎日1回）
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Fiscal Year (e.g., 2025)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  fetch-jepx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd ml
+          pip install -r requirements.txt
+
+      - name: Fetch JEPX data
+        id: fetch
+        run: |
+          cd ml
+          python scripts/fetch_jepx_price.py
+        env:
+          TZ: 'Asia/Tokyo'
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          if [[ -n $(git status --porcelain ml/data/seed/price_tokyo_sample.csv ml/data/seed/jepx_spot_*.csv) ]]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Price data changed, preparing commit"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No price data changes detected"
+          fi
+
+      - name: Commit and push if changed
+        if: steps.git-check.outputs.changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add ml/data/seed/price_tokyo_sample.csv
+          git add ml/data/seed/jepx_spot_*.csv
+          git commit -m "chore: Update JEPX price data ($(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M JST'))"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::JEPX data fetch failed. Check logs for details."
