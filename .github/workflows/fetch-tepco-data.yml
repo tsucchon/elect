@@ -2,12 +2,8 @@ name: Fetch TEPCO Generation Data
 
 on:
   schedule:
-    - cron: '40 21 * * *'  # JST 06:40
-    - cron: '40 3 * * *'   # JST 12:40
-    - cron: '40 9 * * *'   # JST 18:40
-    - cron: '50 1 * * *'   # JST 10:50（4時間10分後）
-    - cron: '50 7 * * *'   # JST 16:50（4時間10分後）
-    - cron: '50 13 * * *'  # JST 22:50（4時間10分後）
+    - cron: '40 * * * *'  # 毎時40分
+    - cron: '50 * * * *'  # 毎時50分（10分後の再取得）
   workflow_dispatch:
     inputs:
       year_month:
