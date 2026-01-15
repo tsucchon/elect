@@ -1,8 +1,8 @@
 name: Fetch JEPX Price Data
 
 on:
-  schedule:
-    - cron: '20 6 * * *'  # JST 15:20（毎日1回）
+  # schedule:
+  #   - cron: '20 6 * * *'  # JST 15:20（毎日1回）
   workflow_dispatch:
     inputs:
       year:
